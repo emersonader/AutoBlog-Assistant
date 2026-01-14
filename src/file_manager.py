@@ -139,19 +139,53 @@ def save_image(
     return file_path
 
 
+def save_audio(
+    folder: Path,
+    audio_bytes: bytes,
+    index: int,
+    blog_title: str = ""
+) -> Optional[Path]:
+    """
+    Save an audio file as WAV.
+
+    Args:
+        folder: Output folder path
+        audio_bytes: WAV audio data
+        index: Audio number (1, 2, or 3)
+        blog_title: Optional blog title for filename
+
+    Returns:
+        Path to the saved file, or None if audio_bytes is None
+    """
+    if audio_bytes is None:
+        return None
+
+    title_slug = slugify(blog_title) if blog_title else "audio"
+    filename = f"audio_{index}_{title_slug}.wav"
+
+    file_path = folder / filename
+
+    with open(file_path, "wb") as f:
+        f.write(audio_bytes)
+
+    return file_path
+
+
 def save_outputs(
     topic: str,
     blogs: list,
     images: list,
+    audios: list = None,
     base_path: str = None
 ) -> dict:
     """
-    Save all outputs (blogs and images) to a topic folder.
+    Save all outputs (blogs, images, and optionally audio) to a topic folder.
 
     Args:
         topic: The topic name
         blogs: List of blog dicts
         images: List of image bytes (can contain None for failed images)
+        audios: Optional list of audio bytes (can contain None for failed audio)
         base_path: Optional base output directory
 
     Returns:
@@ -159,11 +193,13 @@ def save_outputs(
             - folder: Path to the output folder
             - blogs: List of blog file paths
             - images: List of image file paths (None for failed images)
+            - audios: List of audio file paths (None for failed audio)
     """
     folder = create_topic_folder(topic, base_path)
 
     saved_blogs = []
     saved_images = []
+    saved_audios = []
 
     # Save blogs
     for i, blog in enumerate(blogs, 1):
@@ -180,13 +216,25 @@ def save_outputs(
         )
         saved_images.append(image_path)
 
+    # Save audio files if provided
+    if audios:
+        for i, (audio_bytes, blog) in enumerate(zip(audios, blogs), 1):
+            audio_path = save_audio(
+                folder,
+                audio_bytes,
+                i,
+                blog.get("title", "")
+            )
+            saved_audios.append(audio_path)
+
     # Create an index file with links to all content
-    create_index_file(folder, topic, blogs, saved_blogs, saved_images)
+    create_index_file(folder, topic, blogs, saved_blogs, saved_images, saved_audios)
 
     return {
         "folder": folder,
         "blogs": saved_blogs,
-        "images": saved_images
+        "images": saved_images,
+        "audios": saved_audios
     }
 
 
@@ -195,7 +243,8 @@ def create_index_file(
     topic: str,
     blogs: list,
     blog_paths: list,
-    image_paths: list
+    image_paths: list,
+    audio_paths: list = None
 ) -> Path:
     """
     Create an index file listing all generated content.
@@ -220,6 +269,15 @@ def create_index_file(
             index_content += f"{i}. ![Image {i}]({filename})\n"
         else:
             index_content += f"{i}. (Image generation failed)\n"
+
+    if audio_paths:
+        index_content += "\n## Audio Overviews\n\n"
+        for i, audio_path in enumerate(audio_paths, 1):
+            if audio_path:
+                filename = audio_path.name
+                index_content += f"{i}. [Audio Overview {i}]({filename})\n"
+            else:
+                index_content += f"{i}. (Audio generation failed)\n"
 
     index_content += f"""
 
