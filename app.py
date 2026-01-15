@@ -15,9 +15,7 @@ load_dotenv()
 from src.researcher import research_topic
 from src.blog_generator import generate_all_blogs
 from src.image_generator import generate_all_images
-from src.audio_generator import generate_all_audio
 from src.file_manager import save_outputs
-# Google Drive integration removed - use local files with NotebookLM
 
 # Page configuration
 st.set_page_config(
@@ -85,7 +83,6 @@ def main():
         1. Copy `.env.example` to `.env`
         2. Add your Google API key:
            - Get one at: https://aistudio.google.com/apikey
-           - Or via Google Cloud Console
         3. Restart the app
         """)
         return
@@ -123,14 +120,6 @@ def show_input_page():
         horizontal=True
     )
 
-    # Audio overview option
-    st.markdown("### Audio Overview (Optional)")
-    generate_audio = st.checkbox(
-        "Generate Audio Overviews (NotebookLM style)",
-        value=False,
-        help="Create podcast-style audio summaries of each blog post with two AI hosts discussing the content."
-    )
-
     # Generate button
     st.markdown("---")
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -141,7 +130,6 @@ def show_input_page():
             else:
                 st.session_state.topic = topic.strip()
                 st.session_state.image_style = image_style
-                st.session_state.generate_audio = generate_audio
                 st.session_state.step = "generating"
                 st.rerun()
 
@@ -167,7 +155,6 @@ def show_generating_page():
     """Show the progress/generating page."""
     topic = st.session_state.topic
     image_style = st.session_state.image_style
-    want_audio = st.session_state.get("generate_audio", False)
 
     st.markdown(f"### Generating content for: *{topic}*")
     st.markdown("---")
@@ -176,10 +163,7 @@ def show_generating_page():
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # Determine total steps
     total_steps = 4
-    if want_audio:
-        total_steps += 1
 
     try:
         # Get Google API key
@@ -192,54 +176,38 @@ def show_generating_page():
         progress_bar.progress(10)
 
         research = research_topic(topic, google_key)
-        progress_bar.progress(20)
+        progress_bar.progress(25)
         current_step += 1
 
         # Step 2: Generate blogs
         status_text.markdown(f"**Step {current_step}/{total_steps}:** Writing blog posts... (this may take a few minutes)")
-        progress_bar.progress(25)
+        progress_bar.progress(30)
 
         def blog_progress(current, total):
-            pct = 25 + int((current / total) * 25)
+            pct = 30 + int((current / total) * 30)
             progress_bar.progress(pct)
             status_text.markdown(f"**Step {current_step}/{total_steps}:** Writing blog post {current} of {total}...")
 
         blogs = generate_all_blogs(topic, research, google_key, blog_progress)
-        progress_bar.progress(50)
+        progress_bar.progress(60)
         current_step += 1
 
         # Step 3: Generate images
         status_text.markdown(f"**Step {current_step}/{total_steps}:** Creating featured images...")
-        progress_bar.progress(55)
+        progress_bar.progress(65)
 
         def image_progress(current, total):
-            pct = 55 + int((current / total) * 10)
+            pct = 65 + int((current / total) * 25)
             progress_bar.progress(pct)
             status_text.markdown(f"**Step {current_step}/{total_steps}:** Creating image {current} of {total}...")
 
         images = generate_all_images(blogs, google_key, image_style, image_progress)
-        progress_bar.progress(65)
+        progress_bar.progress(90)
         current_step += 1
-
-        # Step 4: Generate audio (if enabled)
-        audios = None
-        if want_audio:
-            status_text.markdown(f"**Step {current_step}/{total_steps}:** Creating audio overviews...")
-            progress_bar.progress(70)
-
-            def audio_progress(current, total):
-                pct = 70 + int((current / total) * 10)
-                progress_bar.progress(pct)
-                status_text.markdown(f"**Step {current_step}/{total_steps}:** Creating audio overview {current} of {total}...")
-
-            audios = generate_all_audio(blogs, google_key, audio_progress)
-            progress_bar.progress(80)
-            current_step += 1
 
         # Final step: Save files
         status_text.markdown(f"**Step {current_step}/{total_steps}:** Saving files...")
-        progress_bar.progress(90)
-        saved = save_outputs(topic, blogs, images, audios)
+        saved = save_outputs(topic, blogs, images)
         progress_bar.progress(100)
 
         # Store results
@@ -248,7 +216,6 @@ def show_generating_page():
             "research": research,
             "blogs": blogs,
             "images": images,
-            "audios": audios,
             "saved": saved
         }
         st.session_state.step = "results"
@@ -268,28 +235,14 @@ def show_results_page():
     topic = results["topic"]
     blogs = results["blogs"]
     images = results["images"]
-    audios = results.get("audios")
     saved = results["saved"]
     folder = saved["folder"]
+
     st.markdown("### Generation Complete!")
+    st.success(f"Created 3 blog posts with images for: **{topic}**")
 
-    # Summary message
-    summary_parts = ["3 blog posts", "images"]
-    if audios and any(audios):
-        summary_parts.append("audio overviews")
-    st.success(f"Created {', '.join(summary_parts)} for: **{topic}**")
-
-    # Output folder info with NotebookLM instructions
+    # Output folder info
     st.info(f"Files saved to: `{folder}`")
-
-    # NotebookLM import instructions
-    with st.expander("Import to NotebookLM"):
-        st.markdown("""
-1. Open [NotebookLM](https://notebooklm.google.com/)
-2. Create a new notebook
-3. Click "Add source" → "Upload"
-4. Drag your blog files from the folder above
-        """)
 
     # Blog previews in tabs
     st.markdown("---")
@@ -311,41 +264,22 @@ def show_results_page():
             if i < len(images) and images[i]:
                 st.image(images[i], caption=f"Featured Image for Blog {i+1}", use_container_width=True)
 
-            # Show audio player if available
-            if audios and i < len(audios) and audios[i]:
-                st.markdown("**Audio Overview:**")
-                st.audio(audios[i], format="audio/wav")
-
-            # Preview content (first 500 chars)
+            # Preview content
             with st.expander("Preview content"):
                 st.markdown(content[:1000] + "...")
 
-            # Download buttons
-            col1, col2 = st.columns(2)
+            # Download button
+            blog_path = saved["blogs"][i]
+            with open(blog_path, "r", encoding="utf-8") as f:
+                blog_content = f.read()
 
-            with col1:
-                blog_path = saved["blogs"][i]
-                with open(blog_path, "r", encoding="utf-8") as f:
-                    blog_content = f.read()
-
-                st.download_button(
-                    label=f"Download Blog (Markdown)",
-                    data=blog_content,
-                    file_name=blog_path.name,
-                    mime="text/markdown",
-                    key=f"download_blog_{i}"
-                )
-
-            with col2:
-                if audios and i < len(audios) and audios[i]:
-                    audio_path = saved["audios"][i]
-                    st.download_button(
-                        label=f"Download Audio (WAV)",
-                        data=audios[i],
-                        file_name=audio_path.name if audio_path else f"audio_{i+1}.wav",
-                        mime="audio/wav",
-                        key=f"download_audio_{i}"
-                    )
+            st.download_button(
+                label=f"Download Blog (Markdown)",
+                data=blog_content,
+                file_name=blog_path.name,
+                mime="text/markdown",
+                key=f"download_blog_{i}"
+            )
 
     # Action buttons
     st.markdown("---")
@@ -358,7 +292,6 @@ def show_results_page():
             st.rerun()
 
     with col2:
-        # Show folder path
         st.markdown(f"**Output folder:**")
         st.code(str(folder))
 
