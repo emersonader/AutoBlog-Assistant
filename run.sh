@@ -6,13 +6,10 @@ cd "$(dirname "$0")"
 # Use Python 3.12 if available
 if command -v /opt/homebrew/bin/python3.12 &> /dev/null; then
     PYTHON="/opt/homebrew/bin/python3.12"
-    PIP="/opt/homebrew/bin/pip3.12"
 elif command -v python3.12 &> /dev/null; then
     PYTHON="python3.12"
-    PIP="pip3.12"
 else
     PYTHON="python3"
-    PIP="pip3"
 fi
 
 echo "Using $($PYTHON --version)"
@@ -27,8 +24,18 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
+# Create virtual environment if it doesn't exist
+if [ ! -d "venv" ]; then
+    echo "Creating virtual environment..."
+    $PYTHON -m venv venv
+fi
+
+# Activate virtual environment
+source venv/bin/activate
+
 # Install dependencies
-$PIP install -q -r requirements.txt
+echo "Installing dependencies..."
+pip install -q -r requirements.txt
 
 # Create output folder
 mkdir -p output
@@ -37,4 +44,4 @@ mkdir -p output
 echo "Starting AutoBlog Assistant..."
 echo "Open http://localhost:8501 in your browser"
 echo ""
-$PYTHON -m streamlit run app.py
+python -m streamlit run app.py
