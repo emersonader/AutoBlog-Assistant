@@ -107,18 +107,33 @@ def show_input_page():
         help="Enter any topic you'd like to research and create blog posts about."
     )
 
-    # Image style selection
-    st.markdown("### Image Style (Optional)")
-    image_style = st.radio(
-        "Choose a style for your featured images:",
-        options=["realistic", "illustration", "artistic"],
+    # Output type selection
+    st.markdown("### What to Generate")
+    output_type = st.radio(
+        "Choose what you'd like to create:",
+        options=["both", "text", "images"],
         format_func=lambda x: {
-            "realistic": "Realistic (Photo-like)",
-            "illustration": "Illustration (Clean, modern)",
-            "artistic": "Artistic (Creative, unique)"
+            "both": "📝 + 🖼️ Blog Posts & Images",
+            "text": "📝 Blog Posts Only",
+            "images": "🖼️ Images Only"
         }[x],
         horizontal=True
     )
+
+    # Image style selection (only show if generating images)
+    image_style = "realistic"
+    if output_type in ["both", "images"]:
+        st.markdown("### Image Style")
+        image_style = st.radio(
+            "Choose a style for your featured images:",
+            options=["realistic", "illustration", "artistic"],
+            format_func=lambda x: {
+                "realistic": "Realistic (Photo-like)",
+                "illustration": "Illustration (Clean, modern)",
+                "artistic": "Artistic (Creative, unique)"
+            }[x],
+            horizontal=True
+        )
 
     # Generate button
     st.markdown("---")
@@ -130,6 +145,7 @@ def show_input_page():
             else:
                 st.session_state.topic = topic.strip()
                 st.session_state.image_style = image_style
+                st.session_state.output_type = output_type
                 st.session_state.step = "generating"
                 st.rerun()
 
@@ -147,6 +163,7 @@ def show_input_page():
             if st.button(example, key=f"example_{example}"):
                 st.session_state.topic = example
                 st.session_state.image_style = "realistic"
+                st.session_state.output_type = "both"
                 st.session_state.step = "generating"
                 st.rerun()
 
@@ -155,21 +172,25 @@ def show_generating_page():
     """Show the progress/generating page."""
     topic = st.session_state.topic
     image_style = st.session_state.image_style
+    output_type = st.session_state.get("output_type", "both")
 
-    st.markdown(f"### Generating content for: *{topic}*")
+    gen_text = output_type in ["both", "text"]
+    gen_images = output_type in ["both", "images"]
+
+    label = {"both": "blog posts & images", "text": "blog posts", "images": "images"}[output_type]
+    st.markdown(f"### Generating {label} for: *{topic}*")
     st.markdown("---")
 
     # Progress tracking
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    total_steps = 4
+    total_steps = (1 if gen_text else 0) + (1 if gen_images else 0) + 2  # research + save always happen
+    current_step = 1
 
     try:
         # Get Google API key
         google_key = os.getenv("GOOGLE_API_KEY")
-
-        current_step = 1
 
         # Step 1: Research
         status_text.markdown(f"**Step {current_step}/{total_steps}:** Researching topic...")
@@ -179,31 +200,41 @@ def show_generating_page():
         progress_bar.progress(25)
         current_step += 1
 
-        # Step 2: Generate blogs
-        status_text.markdown(f"**Step {current_step}/{total_steps}:** Writing blog posts... (this may take a few minutes)")
-        progress_bar.progress(30)
+        # Step 2: Generate blogs (if needed)
+        blogs = []
+        if gen_text:
+            status_text.markdown(f"**Step {current_step}/{total_steps}:** Writing blog posts... (this may take a few minutes)")
+            progress_bar.progress(30)
 
-        def blog_progress(current, total):
-            pct = 30 + int((current / total) * 30)
-            progress_bar.progress(pct)
-            status_text.markdown(f"**Step {current_step}/{total_steps}:** Writing blog post {current} of {total}...")
+            def blog_progress(current, total):
+                pct = 30 + int((current / total) * 30)
+                progress_bar.progress(pct)
+                status_text.markdown(f"**Step {current_step}/{total_steps}:** Writing blog post {current} of {total}...")
 
-        blogs = generate_all_blogs(topic, research, google_key, blog_progress)
-        progress_bar.progress(60)
-        current_step += 1
+            blogs = generate_all_blogs(topic, research, google_key, blog_progress)
+            progress_bar.progress(60)
+            current_step += 1
+        elif gen_images:
+            # For images-only, create minimal blog stubs so image generator has titles
+            blogs = [
+                {"title": f"{topic} - Image {i+1}", "content": research[:500], "word_count": 0, "meta_description": topic}
+                for i in range(3)
+            ]
 
-        # Step 3: Generate images
-        status_text.markdown(f"**Step {current_step}/{total_steps}:** Creating featured images...")
-        progress_bar.progress(65)
+        # Step 3: Generate images (if needed)
+        images = []
+        if gen_images:
+            status_text.markdown(f"**Step {current_step}/{total_steps}:** Creating featured images...")
+            progress_bar.progress(65)
 
-        def image_progress(current, total):
-            pct = 65 + int((current / total) * 25)
-            progress_bar.progress(pct)
-            status_text.markdown(f"**Step {current_step}/{total_steps}:** Creating image {current} of {total}...")
+            def image_progress(current, total):
+                pct = 65 + int((current / total) * 25)
+                progress_bar.progress(pct)
+                status_text.markdown(f"**Step {current_step}/{total_steps}:** Creating image {current} of {total}...")
 
-        images = generate_all_images(blogs, google_key, image_style, image_progress)
-        progress_bar.progress(90)
-        current_step += 1
+            images = generate_all_images(blogs, google_key, image_style, image_progress)
+            progress_bar.progress(90)
+            current_step += 1
 
         # Final step: Save files
         status_text.markdown(f"**Step {current_step}/{total_steps}:** Saving files...")
