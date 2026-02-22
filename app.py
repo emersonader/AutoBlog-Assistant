@@ -216,8 +216,9 @@ def show_generating_page():
             current_step += 1
         elif gen_images:
             # For images-only, create minimal blog stubs so image generator has titles
+            summary = research.get("summary", topic) if isinstance(research, dict) else str(research)[:500]
             blogs = [
-                {"title": f"{topic} - Image {i+1}", "content": research[:500], "word_count": 0, "meta_description": topic}
+                {"title": f"{topic} - Image {i+1}", "content": summary, "word_count": 0, "meta_description": topic}
                 for i in range(3)
             ]
 
